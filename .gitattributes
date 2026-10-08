@@ -1,0 +1,2 @@
+# Repositório sempre com quebras de linha LF (padrão do servidor Linux), mesmo editando no Windows.
+* text=auto eol=lf

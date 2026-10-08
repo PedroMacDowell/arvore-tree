@@ -1,0 +1,25 @@
+{
+  "name": "arvore-backend",
+  "private": true,
+  "type": "commonjs",
+  "main": "server.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node test/run.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.2.1",
+    "nodemailer": "^10.0.16"
+  },
+  "devDependencies": {
+    "mailparser": "^3.9.37",
+    "smtp-server": "^3.19.18"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "arvore-da-amazonia",
+  "private": true,
+  "description": "Árvore da Amazônia — cuide de uma sumaúma virtual e aprenda sobre a floresta.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "postinstall": "npm ci --prefix backend && npm ci --prefix frontend --include=dev",
+    "dev": "node scripts/dev.cjs",
+    "build": "npm run build --prefix frontend",
+    "start": "npm start --prefix backend",
+    "test": "npm run build && npm test --prefix backend"
+  }
+}

@@ -1,0 +1,165 @@
+/* Login e cadastro — usa os tokens de base.css; campos de formulário em base.css */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  background: radial-gradient(circle at 50% 20%, #F0FDF4 0%, var(--bg-page) 65%);
+  position: relative;
+}
+
+.auth-container {
+  width: 100%;
+  max-width: 440px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 2.5rem 2.2rem;
+  box-shadow: var(--shadow-modal);
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-top-nav {
+  margin-bottom: 1.25rem;
+}
+
+.auth-back-link {
+  font-size: 0.82rem;
+  color: var(--green-dark);
+  font-weight: 600;
+}
+
+.auth-brand-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.auth-logo-icon {
+  font-size: 1.8rem;
+}
+
+.auth-brand-tag {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--green-dark);
+}
+
+.auth-title {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.25;
+  margin-bottom: 0.5rem;
+}
+
+.auth-desc {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 1.5rem;
+}
+
+.auth-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 1.5rem;
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 0.7rem 0;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: -1px;
+}
+
+.auth-tab.active {
+  color: var(--green-dark);
+  border-bottom-color: var(--green-primary);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.field-input.highlight-ref {
+  border-color: var(--seed-gold);
+}
+
+.auth-error {
+  color: var(--alert-red);
+  font-size: 0.85rem;
+}
+
+.auth-submit {
+  margin-top: 0.5rem;
+  padding: 0.85rem;
+  background: var(--green-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: #FFFFFF;
+  font-family: inherit;
+  font-size: 0.98rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.25);
+}
+
+.auth-submit:hover:not(:disabled) {
+  background: var(--green-dark);
+  transform: translateY(-1px);
+}
+
+.auth-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Link de texto (esqueci a senha, voltar) e botão principal usado como link */
+.auth-link {
+  align-self: center;
+  background: none;
+  border: none;
+  color: var(--green-dark);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-link:hover {
+  text-decoration: underline;
+}
+
+a.auth-submit {
+  display: block;
+  text-align: center;
+}
+
+/* Aviso neutro (e-mail enviado, link reenviado) */
+.auth-notice {
+  background: var(--bg-green-soft);
+  border: 1px solid var(--border-green);
+  border-radius: var(--radius-sm);
+  color: var(--green-dark);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  padding: 0.85rem 1rem;
+}

@@ -1,0 +1,21 @@
+# Dependências e build
+node_modules/
+frontend/dist/
+
+# Configuração local e segredos (só os arquivos de exemplo vão para o repositório)
+.env
+.env.*
+!.env.example
+
+# Bancos SQLite: contêm e-mails e hashes de senha dos jogadores
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+backups/
+
+# Logs, editores e sistema
+*.log
+.vscode/
+.idea/
+.DS_Store
