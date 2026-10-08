@@ -8,7 +8,7 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const Database = require('better-sqlite3');
+const { createClient } = require('@libsql/client');
 const { SMTPServer } = require('smtp-server');
 const { simpleParser } = require('mailparser');
 
@@ -90,6 +90,32 @@ function makeClient(base) {
   };
 }
 
+/** Acesso direto ao banco do servidor de teste (para simular o passar dos dias, links vencidos etc.). */
+function openDatabase(file) {
+  const client = createClient({ url: `file:${file}` });
+  // Servidor e teste usam o mesmo arquivo: se o servidor estiver gravando, espera a vez.
+  const execute = async (sql, args) => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await client.execute({ sql, args });
+      } catch (err) {
+        if (err.code !== 'SQLITE_BUSY' || attempt > 100) throw err;
+        await wait(20);
+      }
+    }
+  };
+  return {
+    get: async (sql, ...args) => (await execute(sql, args)).rows[0],
+    all: async (sql, ...args) => (await execute(sql, args)).rows,
+    value: async (sql, ...args) => {
+      const row = (await execute(sql, args)).rows[0];
+      return row === undefined ? undefined : Object.values(row)[0];
+    },
+    run: async (sql, ...args) => (await execute(sql, args)).rowsAffected,
+    close: () => client.close(),
+  };
+}
+
 async function registerAndConfirm(client, fields) {
   const r = await client('POST', '/auth/register', fields);
   assert.equal(r.status, 202, 'cadastro: ' + JSON.stringify(r.data));
@@ -105,7 +131,7 @@ async function startServer(tmp, smtpPort) {
   const child = spawn(process.execPath, ['server.js'], {
     cwd: BACKEND,
     env: {
-      ...process.env, NODE_ENV: 'production', PORT: String(port), DB_PATH: dbPath, APP_URL: `http://localhost:${port}`, TRUST_PROXY: '1',
+      ...process.env, NODE_ENV: 'production', PORT: String(port), DATABASE_URL: `file:${dbPath}`, DATABASE_AUTH_TOKEN: '', APP_URL: `http://localhost:${port}`, TRUST_PROXY: '1',
       SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtpPort), SMTP_USER: '', MAIL_FROM: 'Árvore da Amazônia <nao-responda@arvore.test>',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -138,20 +164,25 @@ async function startServer(tmp, smtpPort) {
     try {
       server = await startServer(tmp, smtpPort);
       console.log(`\n━━ ${name}`);
-      const db = new Database(server.dbPath);
+      const db = openDatabase(server.dbPath);
       await require(`./suite-${name}`)({ base: server.base, db, check, mail, client: makeClient(server.base), registerAndConfirm, wait });
       db.close();
     } catch (err) {
       failed = true;
       console.error(`  ✘ ${err.message}${server ? `\n--- log do servidor:\n${server.log()}` : ''}`);
     } finally {
-      server?.child.kill();
+      if (server && server.child.exitCode === null) {
+        const exited = new Promise(resolve => server.child.once('exit', resolve));
+        server.child.kill();
+        await exited; // no Windows, o arquivo do banco só é liberado quando o processo termina
+      }
     }
   }
 
   smtp.close();
   await wait(300);
-  fs.rmSync(tmp, { recursive: true, force: true });
+  // Assíncrono de propósito: o cliente libsql solta o arquivo logo depois do close(), no event loop.
+  await fs.promises.rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   console.log(failed ? `\n✘ Falhou (${passed} verificações passaram antes).` : `\n✔ ${passed} verificações passaram.`);
   process.exit(failed ? 1 : 0);
 })();

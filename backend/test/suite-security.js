@@ -28,6 +28,12 @@ module.exports = async ({ base, db, check, mail }) => {
   }
 
   console.log(' Cabeçalhos e fontes');
+  // Na Vercel as páginas estáticas não passam pelo Express: o vercel.json precisa repetir os mesmos cabeçalhos.
+  const { SECURITY_HEADERS, HSTS } = require('../middleware/security');
+  const vercel = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'vercel.json'), 'utf8'));
+  const staticHeaders = Object.fromEntries(vercel.headers.find(h => h.source === '/(.*)').headers.map(h => [h.key, h.value]));
+  check(JSON.stringify(staticHeaders) === JSON.stringify({ ...SECURITY_HEADERS, 'Strict-Transport-Security': HSTS }),
+    'vercel.json aplica às páginas os mesmos cabeçalhos de segurança da API');
   for (const url of ['/', '/api/health']) {
     const h = (await call('GET', url)).headers;
     const csp = h.get('content-security-policy') || '';
@@ -59,11 +65,11 @@ module.exports = async ({ base, db, check, mail }) => {
   const cookie = setCookie.split(';')[0];
   const token = cookie.split('=')[1];
   check(token.length >= 43, 'token com 256 bits');
-  check(db.prepare('SELECT 1 FROM sessions WHERE token_hash = ?').get(sha(token)), 'banco guarda o SHA-256 do token');
-  const dump = ['sessions', 'users', 'pending_registrations', 'password_resets'].map(t => JSON.stringify(db.prepare(`SELECT * FROM ${t}`).all())).join();
+  check(await db.get('SELECT 1 FROM sessions WHERE token_hash = ?', sha(token)), 'banco guarda o SHA-256 do token');
+  const dump = (await Promise.all(['sessions', 'users', 'pending_registrations', 'password_resets'].map(async t => JSON.stringify(await db.all(`SELECT * FROM ${t}`))))).join();
   check(!dump.includes(token) && !dump.includes(mail.token(confirmMail)), 'nenhum token (sessão ou link) aparece no banco');
   check((await call('GET', '/api/auth/me', { cookie: `__Host-session=${sha(token)}` })).status === 401, 'hash roubado do banco não abre a sessão');
-  const user = db.prepare('SELECT password FROM users WHERE email = ?').get(email);
+  const user = await db.get('SELECT password FROM users WHERE email = ?', email);
   check(/^\$2[aby]\$11\$/.test(user.password) && !dump.includes('senha-forte-1'), 'senha guardada só como bcrypt (custo 11)');
   check((await call('GET', '/api/auth/me', { cookie })).status === 200, 'sessão válida funciona');
 
@@ -74,7 +80,7 @@ module.exports = async ({ base, db, check, mail }) => {
   r = await call('POST', '/api/auth/login', { body: { email, password: 'senha-forte-1' } });
   const cookie2 = cookieOf(r).split(';')[0];
   check(cookie2 !== cookie, 'cada login gera um token novo');
-  db.prepare("UPDATE sessions SET expires_at = datetime('now', '-1 minute') WHERE token_hash = ?").run(sha(cookie2.split('=')[1]));
+  await db.run("UPDATE sessions SET expires_at = datetime('now', '-1 minute') WHERE token_hash = ?", sha(cookie2.split('=')[1]));
   check((await call('GET', '/api/auth/me', { cookie: cookie2 })).status === 401, 'sessão expirada → 401');
   await call('POST', '/api/auth/logout', { cookie });
   check((await call('GET', '/api/auth/me', { cookie })).status === 401, 'token antigo não funciona após logout (sem replay)');

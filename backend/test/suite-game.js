@@ -2,7 +2,7 @@
 module.exports = async ({ base, db, check, client, registerAndConfirm }) => {
   const a = client();
   const id = Date.now().toString(36);
-  const nextDay = userId => db.prepare("UPDATE users SET last_growth_date = '2000-01-01' WHERE id = ?").run(userId);
+  const nextDay = userId => db.run("UPDATE users SET last_growth_date = '2000-01-01' WHERE id = ?", userId);
 
   // Cadastro e validações
   check((await a('POST', '/auth/register', { username: '', email: 'x@y.z', password: '123456' })).status === 400, 'cadastro sem nome');
@@ -55,7 +55,7 @@ module.exports = async ({ base, db, check, client, registerAndConfirm }) => {
     stagesSeen.push(u.tree_stage);
     check(u.pests === (day % 4 === 0 && day < 14), `insetos corretos (dia ${day})`);
     if (day < 14) check((await a('POST', '/tree/water')).status === 409, `não rega 2x no mesmo dia (dia ${day})`);
-    nextDay(u.id);
+    await nextDay(u.id);
   }
   check(JSON.stringify(stagesSeen) === JSON.stringify([0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5]), 'estágios ' + stagesSeen);
   check(u.seeds === 1 && !u.is_growing && !u.can_water && u.highest_stage === 5 && u.stage_progress === 100 && u.next_stage_day === null, 'árvore completa');

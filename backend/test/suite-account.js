@@ -11,10 +11,10 @@ module.exports = async ({ base, db, check, mail, client, registerAndConfirm, wai
   check(firstMail.from.includes('nao-responda@arvore.test'), 'e-mail sai do remetente configurado (MAIL_FROM)');
   check(firstMail.text.includes(`${base}/confirmar-email#token=`), 'link aponta para APP_URL com o token depois do "#"');
   check(/Rita/.test(firstMail.html) && !/<script/i.test(firstMail.html), 'e-mail em HTML com o nome do jogador');
-  check(!db.prepare('SELECT 1 FROM users WHERE email = ?').get(email), 'conta ainda não existe antes da confirmação');
+  check(!await db.get('SELECT 1 FROM users WHERE email = ?', email), 'conta ainda não existe antes da confirmação');
   check((await a('GET', '/auth/me')).status === 401, 'sem sessão antes de confirmar');
   check((await a('POST', '/auth/login', { email, password: 'senha-1234' })).status === 401, 'login antes de confirmar → 401');
-  const pending = db.prepare('SELECT * FROM pending_registrations WHERE email = ?').get(email);
+  const pending = await db.get('SELECT * FROM pending_registrations WHERE email = ?', email);
   check(pending && pending.password.startsWith('$2') && !JSON.stringify(pending).includes(mail.token(firstMail)), 'pendente guarda hash da senha e hash do token');
 
   r = await a('POST', '/auth/register', { username: 'Rita Nova ' + id, email, password: 'outra-senha' });
@@ -35,7 +35,7 @@ module.exports = async ({ base, db, check, mail, client, registerAndConfirm, wai
   check(fresh.status === taken.status && JSON.stringify(fresh.data) === JSON.stringify(taken.data), 'mesma resposta para e-mail novo e e-mail já cadastrado');
   const notice = await mail.next(email, 'Tentativa de cadastro');
   check(notice.text.includes(`${base}/login`) && !notice.text.includes('#token='), 'dono do e-mail recebe só um aviso (sem link de ativação)');
-  check(!db.prepare('SELECT 1 FROM pending_registrations WHERE email = ?').get(email), 'nada fica pendente para e-mail já cadastrado');
+  check(!await db.get('SELECT 1 FROM pending_registrations WHERE email = ?', email), 'nada fica pendente para e-mail já cadastrado');
   check((await client()('POST', '/auth/login', { email, password: 'outra-senha' })).status === 200, 'senha do dono continua a mesma');
   check((await client()('POST', '/auth/login', { email, password: 'senha-do-intruso' })).status === 401, 'senha do intruso não vale');
   await mail.next(`novo${id}@exemplo.com`, 'Confirme seu e-mail');
@@ -68,10 +68,10 @@ module.exports = async ({ base, db, check, mail, client, registerAndConfirm, wai
   check(await mail.none(`fantasma${id}@exemplo.com`), 'nenhum e-mail para endereço sem conta');
   const reset1 = await mail.next(pwEmail, 'Redefinir sua senha');
   check(reset1.text.includes(`${base}/redefinir-senha#token=`) && !reset1.text.includes('site-malicioso'), 'link usa APP_URL, nunca o Host enviado pelo atacante');
-  check(!JSON.stringify(db.prepare('SELECT * FROM password_resets').all()).includes(mail.token(reset1)), 'banco guarda só o hash do link');
+  check(!JSON.stringify(await db.all('SELECT * FROM password_resets')).includes(mail.token(reset1)), 'banco guarda só o hash do link');
   await client()('POST', '/auth/forgot-password', { email: pwEmail });
   const reset2 = await mail.next(pwEmail, 'Redefinir sua senha');
-  check(db.prepare('SELECT COUNT(*) FROM password_resets').pluck().get() === 1, 'só o link mais recente fica válido');
+  check(await db.value('SELECT COUNT(*) FROM password_resets') === 1, 'só o link mais recente fica válido');
 
   const r1 = client();
   check((await r1('POST', '/auth/reset-password', { token: mail.token(reset1), password: 'nova-senha-1' })).status === 400, 'link antigo de senha não vale');
@@ -97,12 +97,12 @@ module.exports = async ({ base, db, check, mail, client, registerAndConfirm, wai
   console.log(' Links expirados');
   await client()('POST', '/auth/forgot-password', { email: pwEmail });
   const expiring = await mail.next(pwEmail, 'Redefinir sua senha');
-  db.prepare("UPDATE password_resets SET expires_at = datetime('now', '-1 minute')").run();
+  await db.run("UPDATE password_resets SET expires_at = datetime('now', '-1 minute')");
   check((await client()('POST', '/auth/reset-password', { token: mail.token(expiring), password: 'expirada-1' })).status === 400, 'link de senha expirado (1 h) → 400');
   const late = `atrasado${id}@exemplo.com`;
   await client()('POST', '/auth/register', { username: 'Atrasado ' + id, email: late, password: 'senha-1234' });
   const lateMail = await mail.next(late, 'Confirme seu e-mail');
-  db.prepare("UPDATE pending_registrations SET expires_at = datetime('now', '-1 minute') WHERE email = ?").run(late);
+  await db.run("UPDATE pending_registrations SET expires_at = datetime('now', '-1 minute') WHERE email = ?", late);
   check((await client()('POST', '/auth/confirm-email', { token: mail.token(lateMail) })).status === 400, 'link de confirmação expirado (24 h) → 400');
 
   console.log(' Limite de e-mails por endereço (contra lotar a caixa de alguém)');
@@ -114,16 +114,17 @@ module.exports = async ({ base, db, check, mail, client, registerAndConfirm, wai
   console.log(' Indicação: bônus só após confirmar e no máximo 10 amigos');
   const host = client();
   const referrer = await registerAndConfirm(host, { username: 'Anfitriao ' + id, email: `anfitriao${id}@exemplo.com`, password: 'senha-1234' });
-  const coins = () => db.prepare('SELECT coins FROM users WHERE id = ?').pluck().get(referrer.id);
+  const coins = () => db.value('SELECT coins FROM users WHERE id = ?', referrer.id);
   await client()('POST', '/auth/register', { username: 'Pendente ' + id, email: `pendente${id}@exemplo.com`, password: 'senha-1234', referral_code: referrer.referral_code });
   await mail.next(`pendente${id}@exemplo.com`, 'Confirme seu e-mail');
-  check(coins() === 10, 'amigo que não confirmou o e-mail não rende bônus');
+  check(await coins() === 10, 'amigo que não confirmou o e-mail não rende bônus');
   const friendCoins = [];
   for (let i = 1; i <= 11; i++) {
     const friend = await registerAndConfirm(client(), { username: `Amigo ${i} ${id}`, email: `amigo${i}-${id}@exemplo.com`, password: 'senha-1234', referral_code: referrer.referral_code });
     friendCoins.push(friend.coins);
   }
-  check(coins() === 10 + 10 * 25, `quem indica ganha 25 moedas pelos 10 primeiros amigos (saldo ${coins()})`);
+  const finalCoins = await coins();
+  check(finalCoins === 10 + 10 * 25, `quem indica ganha 25 moedas pelos 10 primeiros amigos (saldo ${finalCoins})`);
   check(friendCoins.every(c => c === 20), 'todo amigo indicado começa com 10 moedas extras, inclusive o 11º');
   await wait(100);
 };

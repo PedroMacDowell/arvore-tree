@@ -15,18 +15,22 @@ const CONTENT_SECURITY_POLICY = [
   "frame-ancestors 'none'",
 ].join('; ');
 
-/** Cabeçalhos de proteção do navegador em todas as respostas. */
+// Cabeçalhos de proteção do navegador. As páginas estáticas na Vercel recebem os mesmos via vercel.json
+// (um teste confere que as duas listas são iguais).
+const SECURITY_HEADERS = {
+  'Content-Security-Policy': CONTENT_SECURITY_POLICY, // bloqueia scripts injetados (XSS)
+  'X-Frame-Options': 'DENY', // impede embutir o site em iframe (clickjacking)
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+};
+// Força HTTPS nas próximas visitas. Só em produção, que roda atrás de HTTPS.
+const HSTS = 'max-age=31536000; includeSubDomains';
+
 function securityHeaders(_req, res, next) {
-  res.set({
-    'Content-Security-Policy': CONTENT_SECURITY_POLICY, // bloqueia scripts injetados (XSS)
-    'X-Frame-Options': 'DENY', // impede embutir o site em iframe (clickjacking)
-    'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'strict-origin-when-cross-origin',
-    'Cross-Origin-Opener-Policy': 'same-origin',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-  });
-  // Força HTTPS nas próximas visitas. Só em produção, que roda atrás de HTTPS.
-  if (production) res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.set(SECURITY_HEADERS);
+  if (production) res.set('Strict-Transport-Security', HSTS);
   next();
 }
 
@@ -60,4 +64,4 @@ function noStore(_req, res, next) {
   next();
 }
 
-module.exports = { securityHeaders, sameOriginOnly, noStore };
+module.exports = { SECURITY_HEADERS, HSTS, securityHeaders, sameOriginOnly, noStore };

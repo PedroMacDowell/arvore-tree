@@ -10,24 +10,24 @@ const COOKIE = production ? '__Host-session' : 'session';
 const cookieOptions = { httpOnly: true, secure: production, sameSite: 'strict', path: '/' };
 
 // O cookie leva o token; o banco guarda apenas o hash. Se o banco vazar, não dá para entrar em nenhuma conta.
-function startSession(res, userId) {
-  db.prepare("DELETE FROM sessions WHERE expires_at <= datetime('now')").run();
+async function startSession(res, userId) {
+  await db.run("DELETE FROM sessions WHERE expires_at <= datetime('now')");
   const { token, hash } = newToken();
-  db.prepare("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, datetime('now', ?))").run(hash, userId, `+${SESSION_DAYS} days`);
+  await db.run("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, datetime('now', ?))", hash, userId, `+${SESSION_DAYS} days`);
   res.cookie(COOKIE, token, { ...cookieOptions, maxAge: SESSION_DAYS * 24 * 60 * 60 * 1000 });
 }
 
-function endSession(req, res) {
+async function endSession(req, res) {
   const token = req.cookies[COOKIE];
-  if (typeof token === 'string') db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashToken(token));
+  if (typeof token === 'string') await db.run('DELETE FROM sessions WHERE token_hash = ?', hashToken(token));
   res.clearCookie(COOKIE, cookieOptions);
 }
 
 /** Exige sessão válida e expõe o id do jogador em req.userId. */
-function requireAuth(req, _res, next) {
+async function requireAuth(req, _res, next) {
   const token = req.cookies[COOKIE];
   const userId = typeof token === 'string'
-    && db.prepare("SELECT user_id FROM sessions WHERE token_hash = ? AND expires_at > datetime('now')").pluck().get(hashToken(token));
+    && await db.value("SELECT user_id FROM sessions WHERE token_hash = ? AND expires_at > datetime('now')", hashToken(token));
   if (!userId) throw new HttpError(401, 'Sessão expirada. Faça login novamente.');
   req.userId = userId;
   next();

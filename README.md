@@ -31,30 +31,37 @@ As regras ficam em [backend/services/tree.js](backend/services/tree.js) (árvore
 [backend/services/missions.js](backend/services/missions.js) e
 [backend/services/accounts.js](backend/services/accounts.js) (conta, bônus e indicação).
 
-## Estrutura
+## Arquitetura
+
+- **Frontend**: React 19 + Vite, compilado para arquivos estáticos (`frontend/dist`).
+- **API**: Express 5. Na Vercel roda como uma função (`api/index.js`); localmente, como servidor Node (`backend/server.js`).
+- **Banco**: SQLite via libSQL — [Turso](https://turso.tech) em produção, arquivo local em desenvolvimento e nos testes.
+- **E-mail**: SMTP (qualquer provedor), enviado depois da resposta da API.
 
 ```
 arvore-tree/
+├── vercel.json              # build, rotas (/api → função, resto → site) e cabeçalhos de segurança
+├── api/index.js             # função da Vercel: entrega as requisições /api/* ao app Express
 ├── package.json             # scripts: install, dev, build, start, test
 ├── scripts/dev.cjs          # sobe backend + frontend juntos
-├── backend/                 # Node.js + Express 5 + SQLite (better-sqlite3)
-│   ├── server.js            # app Express; em produção também serve frontend/dist
+├── backend/
+│   ├── app.js               # app Express (rotas, segurança, erros)
+│   ├── server.js            # servidor Node local; também serve o frontend compilado
 │   ├── config.js            # variáveis de ambiente, validadas ao iniciar
 │   ├── routes.js            # todas as rotas da API
-│   ├── db.js                # conexão e schema do banco
+│   ├── db.js                # conexão libSQL/Turso, esquema e transações
 │   ├── tokens.js            # tokens secretos (só o hash vai para o banco)
+│   ├── background.js        # tarefas depois da resposta (waitUntil na Vercel)
 │   ├── middleware/          # sessão, cabeçalhos de segurança/CSRF, limites de tentativas
 │   ├── services/            # regras: accounts, tree, missions, rewards, mailer
 │   ├── catalog/             # conteúdo editável: missions.js e rewards.js
 │   └── test/                # testes de ponta a ponta da API (npm test)
-└── frontend/                # React 19 + Vite + Framer Motion
-    └── src/
-        ├── api.js           # cliente fetch para /api
-        ├── constants.js     # nomes dos estágios e rótulos de temas
-        ├── context/         # sessão do jogador (AuthProvider, useAuth)
-        ├── pages/           # início, login/cadastro, confirmar e-mail, senha, painel (/app)
-        ├── components/      # abas do painel, árvore (TreeDisplay), modais, avisos
-        └── styles/          # base, landing, auth, app
+└── frontend/src/
+    ├── api.js               # cliente fetch para /api
+    ├── context/             # sessão do jogador (AuthProvider, useAuth)
+    ├── pages/               # início, login/cadastro, confirmar e-mail, senha, painel (/app)
+    ├── components/          # abas do painel, árvore (TreeDisplay), modais, avisos
+    └── styles/              # base, landing, auth, app
 ```
 
 ## API
@@ -87,8 +94,8 @@ Erros voltam como `{ "error": "mensagem para o jogador" }`.
 
 ## Banco de dados
 
-SQLite em um único arquivo (`backend/arvore.db` por padrão, ou `DB_PATH`). As tabelas são criadas na
-primeira execução:
+As tabelas são criadas automaticamente na primeira requisição (em desenvolvimento, no arquivo
+`backend/arvore.db`):
 
 | Tabela | Conteúdo |
 |---|---|
@@ -96,77 +103,77 @@ primeira execução:
 | `sessions` | hash dos tokens de sessão (7 dias) |
 | `pending_registrations` | cadastros aguardando confirmação do e-mail (24 h) |
 | `password_resets` | hash dos links de nova senha (1 h, uso único) |
+| `rate_limits` | contadores dos limites de tentativas |
 | `mission_completions` | missões concluídas por jogador (`mission_key`) |
 | `reward_claims` | recompensas resgatadas (`reward_key`) |
 | `forest_trees` | árvores que completaram os 14 dias |
 
 O texto das missões e recompensas **não** fica no banco: vem de `backend/catalog/`. Editar um texto
-vale para todos na hora. Só nunca altere a `key` de um item existente (é o que o banco guarda).
+vale para todos no próximo deploy. Só nunca altere a `key` de um item existente (é o que o banco guarda).
 
 ## Rodar localmente
 
-Requer **Node.js 22 ou mais recente** (exigência do better-sqlite3).
+Requer **Node.js 22 ou mais recente**.
 
 ```bash
 npm install     # instala backend e frontend
-npm run dev     # backend em :3001 + frontend em http://localhost:5173
+npm run dev     # API em :3001 + site em http://localhost:5173
 npm test        # compila o frontend e roda os testes da API
 ```
 
-Em desenvolvimento o Vite repassa `/api` para o backend (mesma origem, sem CORS). Sem SMTP configurado,
-os e-mails de confirmação e de senha **aparecem no terminal** do backend, com o link para abrir.
-Configuração opcional: copie `backend/.env.example` para `backend/.env`.
+Em desenvolvimento o Vite repassa `/api` para o backend (mesma origem, sem CORS) e o banco é o arquivo
+`backend/arvore.db`. Sem SMTP configurado, os e-mails de confirmação e de senha **aparecem no terminal**
+do backend, com o link para abrir. Configuração opcional: copie `backend/.env.example` para `backend/.env`.
 
-## Deploy
+## Deploy na Vercel
 
-O app roda como **um único serviço Node**: o backend serve a API e o frontend compilado. Como o banco é
-um arquivo SQLite, o serviço precisa de um **disco persistente** (ex.: Render com Disk, Railway com
-Volume, Fly.io com Volume ou uma VPS). Plataformas serverless sem disco (Vercel, Netlify) não servem.
+O `vercel.json` já define tudo (build, rotas e cabeçalhos): não é preciso mudar nenhuma configuração de
+build no painel. Faltam três coisas:
 
-1. **E-mail**: crie uma conta num provedor com SMTP (Brevo, Resend, Amazon SES, Mailgun…), verifique o
-   seu domínio nele (registros SPF/DKIM no DNS, para os e-mails não caírem no spam) e anote host,
-   porta, usuário e senha SMTP.
-2. **Serviço**: crie um serviço Node apontando para este repositório, com um disco persistente.
-
-   | Etapa | Comando |
-   |---|---|
-   | Instalação | `npm install` |
-   | Build | `npm run build` |
-   | Início | `npm start` |
-   | Health check | `GET /api/health` |
-
-3. **Variáveis de ambiente** (no painel do provedor — nunca no código):
+1. **Banco (Turso)** — em [turso.tech](https://turso.tech), crie uma conta e um banco (escolha a região
+   mais próxima das funções da Vercel, que por padrão rodam em Washington, EUA). Copie a URL do banco
+   (`libsql://…`), gere um token e cadastre na Vercel as variáveis `TURSO_DATABASE_URL` e `TURSO_AUTH_TOKEN`.
+   As tabelas são criadas sozinhas na primeira requisição.
+2. **E-mail (SMTP)** — crie uma conta num provedor (Brevo, Resend, Amazon SES, Mailgun…), verifique o seu
+   domínio nele (registros SPF/DKIM no DNS, para os e-mails não caírem no spam) e cadastre na Vercel:
 
    | Variável | Valor |
    |---|---|
-   | `NODE_ENV` | `production` |
-   | `APP_URL` | endereço público com https, ex.: `https://arvore.seudominio.com.br` |
-   | `DB_PATH` | arquivo dentro do disco persistente, ex.: `/var/data/arvore.db` |
-   | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | dados SMTP do provedor de e-mail |
+   | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | dados SMTP do provedor |
    | `MAIL_FROM` | remetente do domínio verificado, ex.: `Árvore da Amazônia <nao-responda@seudominio.com.br>` |
-   | `TRUST_PROXY` | opcional; padrão `1` (atrás do proxy do provedor). `0` se o Node ficar exposto direto |
-   | `PORT` | normalmente definida pelo provedor |
+   | `APP_URL` | só se usar domínio próprio, ex.: `https://arvore.seudominio.com.br` |
 
-Em produção o servidor **não sobe** se `APP_URL`, `SMTP_HOST` ou `MAIL_FROM` faltarem, ou se `APP_URL`
-não usar https: o log do deploy mostra exatamente o que ajustar. A cada novo deploy o servidor recebe
-`SIGTERM` e encerra limpo (termina as requisições e fecha o banco).
+3. **Projeto** — em [vercel.com/new](https://vercel.com/new), importe este repositório do GitHub e clique
+   em Deploy. A cada `git push` na `main`, um novo deploy sai sozinho.
+
+Confira em `https://SEU-PROJETO.vercel.app/api/health` (deve responder `{"ok":true}`). Se faltar alguma
+variável, a API responde "Servidor em manutenção" e o log da função (Vercel → Logs) diz exatamente o que
+falta.
+
+**Prévias**: cada pull request ganha um endereço de prévia. Se as variáveis do Turso valerem também para
+"Preview", as prévias usam o mesmo banco da produção; para isolar, crie um segundo banco no Turso e
+cadastre-o só no ambiente Preview.
 
 ## Segurança
 
 - **Contas**: o cadastro só vira conta após confirmar o e-mail. Cadastro, reenvio e "esqueci a senha" respondem
-  igual (e no mesmo tempo) com ou sem conta, então ninguém descobre quais e-mails estão cadastrados. Se o
-  e-mail já tem conta, o dono recebe um aviso.
+  igual (e no mesmo tempo, pois gravações e e-mails acontecem depois da resposta) com ou sem conta, então
+  ninguém descobre quais e-mails estão cadastrados. Se o e-mail já tem conta, o dono recebe um aviso.
 - **Senhas**: só o hash bcrypt (custo 11) é guardado; 6 a 72 caracteres (limite do bcrypt). Trocar a senha
   encerra todas as sessões abertas e avisa o dono por e-mail.
 - **Tokens** (sessão, confirmação, nova senha): 256 bits aleatórios; o banco guarda só o hash SHA-256. Links
   expiram (24 h / 1 h), valem uma vez e levam o token depois do `#`, que não vai para logs de servidor.
-  Os links usam sempre `APP_URL`, nunca o cabeçalho `Host` da requisição.
+  Os links usam sempre `APP_URL` (ou o domínio da Vercel), nunca o cabeçalho `Host` da requisição.
 - **Sessão**: cookie `HttpOnly`, `SameSite=Strict` e, em produção, `Secure` com prefixo `__Host-`. Expira em 7 dias.
 - **CSRF**: além do `SameSite=Strict`, ações (POST/PATCH) vindas de outro site são recusadas (`Sec-Fetch-Site`/`Origin`).
+- **Concorrência**: ações que verificam e alteram o estado (regar, plantar, resgatar, concluir missão, confirmar
+  e-mail) rodam em transações de escrita; dois cliques simultâneos não passam juntos pela verificação.
 - **Abuso**: login com até 10 erros por conta e 30 por IP a cada 15 min; até 5 e-mails por hora para um mesmo
-  endereço; cadastros e links inválidos limitados por IP; 1000 requisições por minuto por IP no geral.
+  endereço; cadastros e links inválidos limitados por IP (contadores no banco, valem para todas as instâncias);
+  1000 requisições por minuto por IP no geral.
 - **Cabeçalhos**: CSP só com recursos do próprio site (inclusive as fontes, sem Google Fonts), anti-iframe,
-  `nosniff`, HSTS em produção e `no-store` nas respostas da API.
+  `nosniff`, HSTS e `no-store` nas respostas da API — na API pelo Express e nas páginas pelo `vercel.json`
+  (um teste garante que os dois são iguais).
 - **Entradas**: corpo limitado a 10 KB, SQL sempre parametrizado, nomes sem caracteres invisíveis e só com
   alfabeto latino (contra imitações), nomes de guardião únicos sem diferenciar maiúsculas.
 - **Dependências**: `.npmrc` com `ignore-scripts=true` nos dois projetos (nenhum pacote roda código na instalação).
