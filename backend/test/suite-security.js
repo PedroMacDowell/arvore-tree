@@ -31,7 +31,7 @@ module.exports = async ({ base, db, check, mail }) => {
   // Na Vercel as páginas estáticas não passam pelo Express: o vercel.json precisa repetir os mesmos cabeçalhos.
   const { SECURITY_HEADERS, HSTS } = require('../middleware/security');
   const vercel = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'vercel.json'), 'utf8'));
-  const staticHeaders = Object.fromEntries(vercel.headers.find(h => h.source === '/(.*)').headers.map(h => [h.key, h.value]));
+  const staticHeaders = Object.fromEntries(vercel.services.frontend.headers.find(h => h.source === '/(.*)').headers.map(h => [h.key, h.value]));
   check(JSON.stringify(staticHeaders) === JSON.stringify({ ...SECURITY_HEADERS, 'Strict-Transport-Security': HSTS }),
     'vercel.json aplica às páginas os mesmos cabeçalhos de segurança da API');
   for (const url of ['/', '/api/health']) {

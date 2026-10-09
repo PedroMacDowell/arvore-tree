@@ -1,6 +1,7 @@
 # Dependências e build
 node_modules/
 frontend/dist/
+.vercel/
 
 # Configuração local e segredos (só os arquivos de exemplo vão para o repositório)
 .env

@@ -1,5 +1,5 @@
 // Servidor Node para desenvolvimento (npm run dev) e para hospedagens com servidor próprio (npm start).
-// Na Vercel quem roda é api/index.js; este arquivo não é usado lá.
+// Na Vercel quem roda é vercel.js (serviço "backend"); este arquivo não é usado lá.
 const fs = require('node:fs');
 const path = require('node:path');
 

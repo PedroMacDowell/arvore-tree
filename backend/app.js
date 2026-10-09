@@ -1,4 +1,4 @@
-// App Express da API. Usado pela função da Vercel (api/index.js) e pelo servidor local (server.js).
+// App Express da API. Usado pelo serviço "backend" na Vercel (vercel.js) e pelo servidor local (server.js).
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const config = require('./config');

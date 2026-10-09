@@ -33,20 +33,20 @@ As regras ficam em [backend/services/tree.js](backend/services/tree.js) (árvore
 
 ## Arquitetura
 
-- **Frontend**: React 19 + Vite, compilado para arquivos estáticos (`frontend/dist`).
-- **API**: Express 5. Na Vercel roda como uma função (`api/index.js`); localmente, como servidor Node (`backend/server.js`).
+- **Frontend**: React 19 + Vite, compilado para arquivos estáticos. Na Vercel é o serviço `frontend`.
+- **API**: Express 5. Na Vercel é o serviço `backend` (entrada `backend/vercel.js`); localmente, servidor Node (`backend/server.js`).
 - **Banco**: SQLite via libSQL — [Turso](https://turso.tech) em produção, arquivo local em desenvolvimento e nos testes.
 - **E-mail**: SMTP (qualquer provedor), enviado depois da resposta da API.
 
 ```
 arvore-tree/
-├── vercel.json              # build, rotas (/api → função, resto → site) e cabeçalhos de segurança
-├── api/index.js             # função da Vercel: entrega as requisições /api/* ao app Express
+├── vercel.json              # serviços da Vercel (backend e frontend), rotas públicas e cabeçalhos
 ├── package.json             # scripts: install, dev, build, start, test
 ├── scripts/dev.cjs          # sobe backend + frontend juntos
 ├── backend/
 │   ├── app.js               # app Express (rotas, segurança, erros)
 │   ├── server.js            # servidor Node local; também serve o frontend compilado
+│   ├── vercel.js            # entrada do serviço backend na Vercel
 │   ├── config.js            # variáveis de ambiente, validadas ao iniciar
 │   ├── routes.js            # todas as rotas da API
 │   ├── db.js                # conexão libSQL/Turso, esquema e transações
@@ -127,8 +127,16 @@ do backend, com o link para abrir. Configuração opcional: copie `backend/.env.
 
 ## Deploy na Vercel
 
-O `vercel.json` já define tudo (build, rotas e cabeçalhos): não é preciso mudar nenhuma configuração de
-build no painel. Faltam três coisas:
+O projeto usa [Vercel Services](https://vercel.com/docs/services): um único projeto e um único domínio com
+dois serviços, cada um compilado separadamente. O `vercel.json` já define tudo:
+
+| Serviço | Pasta | O que é | Rota pública |
+|---|---|---|---|
+| `backend` | `backend/` | API Express (entrada `vercel.js`) | `/api/*` (recebe o caminho completo, ex.: `/api/auth/me`) |
+| `frontend` | `frontend/` | site Vite estático; rotas como `/app` caem no `index.html` | todo o resto |
+
+Não há chamadas internas entre serviços: o navegador chama `/api` pela rota pública, no mesmo domínio.
+Para testar os dois juntos localmente como na Vercel, use `vercel dev`. Para o deploy faltam três coisas:
 
 1. **Banco (Turso)** — em [turso.tech](https://turso.tech), crie uma conta e um banco (escolha a região
    mais próxima das funções da Vercel, que por padrão rodam em Washington, EUA). Copie a URL do banco
@@ -172,7 +180,7 @@ cadastre-o só no ambiente Preview.
   endereço; cadastros e links inválidos limitados por IP (contadores no banco, valem para todas as instâncias);
   1000 requisições por minuto por IP no geral.
 - **Cabeçalhos**: CSP só com recursos do próprio site (inclusive as fontes, sem Google Fonts), anti-iframe,
-  `nosniff`, HSTS e `no-store` nas respostas da API — na API pelo Express e nas páginas pelo `vercel.json`
+  `nosniff`, HSTS e `no-store` nas respostas da API — na API pelo Express e nas páginas pelo serviço `frontend` do `vercel.json`
   (um teste garante que os dois são iguais).
 - **Entradas**: corpo limitado a 10 KB, SQL sempre parametrizado, nomes sem caracteres invisíveis e só com
   alfabeto latino (contra imitações), nomes de guardião únicos sem diferenciar maiúsculas.
