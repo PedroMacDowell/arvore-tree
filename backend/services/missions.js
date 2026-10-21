@@ -1,54 +1,20 @@
-const db = require('../db');
-const HttpError = require('../http-error');
-const LEVELS = require('../catalog/missions');
-const { publicUser } = require('./tree');
-
-// Insumos que toda missão concede, além das moedas do catálogo.
-const SUPPLIES = { fertilizer_reward: 1, protection_reward: 1 };
-
-const MISSIONS = new Map();
-for (const level of LEVELS) {
-  for (const mission of level.missions) {
-    if (MISSIONS.has(mission.key)) throw new Error(`Missão duplicada no catálogo: ${mission.key}`);
-    MISSIONS.set(mission.key, { ...mission, ...SUPPLIES, stage: level.stage });
-  }
-}
-
-const highestStage = (userId, q = db) => q.value('SELECT highest_stage FROM users WHERE id = ?', userId);
-
-/** Todos os níveis; só os liberados trazem as missões. */
+const db = require('../db'); const HttpError = require('../http-error'); const LEVELS = require('../catalog/missions'); const { publicUser } = require('./tree');
+const SUPPLIES = { fertilizer_reward: 1, protection_reward: 1 }, MISSIONS = new Map();
+for (const level of LEVELS) for (const mission of level.missions) { if (MISSIONS.has(mission.key)) throw new Error(`Missão duplicada: ${mission.key}`); MISSIONS.set(mission.key, { ...mission, ...SUPPLIES, stage: level.stage }); }
 async function listMissions(userId) {
-  const unlockedUpTo = await highestStage(userId);
-  const done = new Set((await db.all('SELECT mission_key FROM mission_completions WHERE user_id = ?', userId)).map(row => row.mission_key));
-  return LEVELS.map(level => {
-    const unlocked = level.stage <= unlockedUpTo;
-    return {
-      stage: level.stage,
-      theme: level.theme,
-      unlocked,
-      total: level.missions.length,
-      completed: level.missions.filter(m => done.has(m.key)).length,
-      missions: unlocked ? level.missions.map(m => ({ ...MISSIONS.get(m.key), completed: done.has(m.key) })) : [],
-    };
-  });
+  const user = await db.users().findOne({ id: userId }, { projection: { highest_stage: 1 } }); const done = new Set((await db.missions().find({ user_id: userId }).toArray()).map(x => x.mission_key));
+  return LEVELS.map(level => ({ stage: level.stage, theme: level.theme, unlocked: level.stage <= user.highest_stage, total: level.missions.length, completed: level.missions.filter(m => done.has(m.key)).length, missions: level.stage <= user.highest_stage ? level.missions.map(m => ({ ...MISSIONS.get(m.key), completed: done.has(m.key) })) : [] }));
 }
-
-function completeMission(userId, key) {
-  const mission = MISSIONS.get(key);
-  if (!mission) throw new HttpError(404, 'Missão não encontrada.');
-  return db.transaction(async tx => {
-    if (mission.stage > await highestStage(userId, tx)) throw new HttpError(403, 'Cuide da sua árvore para liberar este nível de missões.');
-
-    const inserted = await tx.run('INSERT OR IGNORE INTO mission_completions (user_id, mission_key) VALUES (?, ?)', userId, key);
-    if (!inserted) throw new HttpError(409, 'Missão já concluída.');
-
-    await tx.run('UPDATE users SET coins = coins + ?, fertilizer = fertilizer + ?, insect_protection = insect_protection + ? WHERE id = ?',
-      mission.coin_reward, mission.fertilizer_reward, mission.protection_reward, userId);
-    return {
-      user: await publicUser(userId, tx),
-      message: `Missão concluída! +${mission.coin_reward} moedas, +${mission.fertilizer_reward} fertilizante e +${mission.protection_reward} proteção.`,
-    };
-  });
+async function completeMission(userId, key) {
+  const m = MISSIONS.get(key); if (!m) throw new HttpError(404, 'Missão não encontrada.');
+  try {
+    await db.transaction(async session => {
+      const user = await db.users(session).findOne({ id: userId });
+      if (m.stage > user.highest_stage) throw new HttpError(403, 'Cuide da sua árvore para liberar este nível de missões.');
+      await db.missions(session).insertOne({ user_id: userId, mission_key: key, completed_at: new Date() });
+      await db.users(session).updateOne({ id: userId }, { $inc: { coins: m.coin_reward, fertilizer: 1, insect_protection: 1 } });
+    });
+  } catch (e) { if (e.code === 11000) throw new HttpError(409, 'Missão já concluída.'); throw e; }
+  return { user: await publicUser(userId), message: `Missão concluída! +${m.coin_reward} moedas, +1 fertilizante e +1 proteção.` };
 }
-
 module.exports = { listMissions, completeMission };

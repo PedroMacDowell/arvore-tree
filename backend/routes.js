@@ -18,7 +18,7 @@ async function signIn(req, res, userId) {
 
 // Verificação de saúde para o provedor de hospedagem: confirma que o banco responde.
 router.get('/health', async (_req, res) => {
-  await db.get('SELECT 1');
+  await db.users().estimatedDocumentCount();
   res.json({ ok: true });
 });
 

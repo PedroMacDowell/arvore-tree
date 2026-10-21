@@ -1,7 +1,5 @@
 // Toda a configuração vem de variáveis de ambiente (backend/.env em desenvolvimento; painel da Vercel em produção).
 // Em produção o app não sobe se faltar algo essencial: melhor falhar no deploy do que rodar quebrado.
-const path = require('node:path');
-
 const env = process.env;
 const production = env.NODE_ENV === 'production';
 const onVercel = Boolean(env.VERCEL);
@@ -11,13 +9,11 @@ function fail(message) {
   throw new Error(`Configuração inválida: ${message} Veja backend/.env.example.`);
 }
 
-// Banco: Turso (libsql://…) em produção; arquivo SQLite local em desenvolvimento e nos testes.
-// A integração Turso da Vercel cria TURSO_DATABASE_URL e TURSO_AUTH_TOKEN.
+// MongoDB: URI local ou Atlas. DATABASE_NAME é opcional.
 const database = {
-  url: env.DATABASE_URL || env.TURSO_DATABASE_URL || `file:${path.join(__dirname, 'arvore.db')}`,
-  authToken: env.DATABASE_AUTH_TOKEN || env.TURSO_AUTH_TOKEN || undefined,
+  url: env.MONGODB_URI || 'mongodb://127.0.0.1:27017',
+  name: env.MONGODB_DATABASE || 'arvore',
 };
-database.isFile = database.url.startsWith('file:');
 
 const trustProxy = Number(env.TRUST_PROXY ?? (production ? 1 : 0));
 if (!Number.isInteger(trustProxy) || trustProxy < 0) fail('TRUST_PROXY deve ser um número inteiro ≥ 0.');
@@ -43,6 +39,7 @@ if (env.SMTP_HOST) {
 
 if (production) {
   const missing = [['SMTP_HOST', env.SMTP_HOST], ['MAIL_FROM', env.MAIL_FROM], ['APP_URL', appUrl]].filter(([, value]) => !value).map(([name]) => name);
+  if (!database.url) missing.push('MONGODB_URI');
   if (missing.length) fail(`defina ${missing.join(', ')} no ambiente de produção.`);
   let url;
   try {
@@ -51,8 +48,9 @@ if (production) {
     fail('APP_URL não é uma URL válida.');
   }
   if (url.protocol !== 'https:' && !isLocalHost(url.hostname)) fail('APP_URL deve usar https:// em produção.');
-  // Funções da Vercel não têm disco permanente: um banco em arquivo seria apagado.
-  if (onVercel && database.isFile) fail('na Vercel o banco precisa ser remoto: defina TURSO_DATABASE_URL e TURSO_AUTH_TOKEN.');
+  if (onVercel && (!database.url || database.url.startsWith('mongodb://localhost') || database.url.startsWith('mongodb://127.0.0.1'))) {
+    fail('na Vercel, defina MONGODB_URI com a conexão remota do MongoDB Atlas.');
+  }
 }
 
 module.exports = {

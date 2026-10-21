@@ -2,7 +2,7 @@
 module.exports = async ({ base, db, check, client, registerAndConfirm }) => {
   const a = client();
   const id = Date.now().toString(36);
-  const nextDay = userId => db.run("UPDATE users SET last_growth_date = '2000-01-01' WHERE id = ?", userId);
+  const nextDay = userId => db.setLastGrowthDate(userId);
 
   // Cadastro e validações
   check((await a('POST', '/auth/register', { username: '', email: 'x@y.z', password: '123456' })).status === 400, 'cadastro sem nome');

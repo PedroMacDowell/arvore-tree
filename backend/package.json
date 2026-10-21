@@ -12,11 +12,11 @@
     "test": "node test/run.js"
   },
   "dependencies": {
-    "@libsql/client": "^0.18.0",
     "@vercel/functions": "^3.9.11",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "express": "^5.2.1",
+    "mongodb": "^6.18.0",
     "nodemailer": "^10.0.16"
   },
   "devDependencies": {

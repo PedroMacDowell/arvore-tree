@@ -35,7 +35,7 @@ As regras ficam em [backend/services/tree.js](backend/services/tree.js) (árvore
 
 - **Frontend**: React 19 + Vite, compilado para arquivos estáticos. Na Vercel é o serviço `frontend`.
 - **API**: Express 5. Na Vercel é o serviço `backend` (entrada `backend/vercel.js`); localmente, servidor Node (`backend/server.js`).
-- **Banco**: SQLite via libSQL — [Turso](https://turso.tech) em produção, arquivo local em desenvolvimento e nos testes.
+- **Banco**: MongoDB local em desenvolvimento e MongoDB Atlas em produção.
 - **E-mail**: SMTP (qualquer provedor), enviado depois da resposta da API.
 
 ```
@@ -49,7 +49,7 @@ arvore-tree/
 │   ├── vercel.js            # entrada do serviço backend na Vercel
 │   ├── config.js            # variáveis de ambiente, validadas ao iniciar
 │   ├── routes.js            # todas as rotas da API
-│   ├── db.js                # conexão libSQL/Turso, esquema e transações
+│   ├── db.js                # conexão MongoDB e criação de índices
 │   ├── tokens.js            # tokens secretos (só o hash vai para o banco)
 │   ├── background.js        # tarefas depois da resposta (waitUntil na Vercel)
 │   ├── middleware/          # sessão, cabeçalhos de segurança/CSRF, limites de tentativas
@@ -94,10 +94,9 @@ Erros voltam como `{ "error": "mensagem para o jogador" }`.
 
 ## Banco de dados
 
-As tabelas são criadas automaticamente na primeira requisição (em desenvolvimento, no arquivo
-`backend/arvore.db`):
+As coleções e índices são preparados automaticamente ao iniciar:
 
-| Tabela | Conteúdo |
+| Coleção | Conteúdo |
 |---|---|
 | `users` | conta, inventário (sementes, moedas, fertilizante, proteção) e estado da árvore atual |
 | `sessions` | hash dos tokens de sessão (7 dias) |
@@ -121,9 +120,7 @@ npm run dev     # API em :3001 + site em http://localhost:5173
 npm test        # compila o frontend e roda os testes da API
 ```
 
-Em desenvolvimento o Vite repassa `/api` para o backend (mesma origem, sem CORS) e o banco é o arquivo
-`backend/arvore.db`. Sem SMTP configurado, os e-mails de confirmação e de senha **aparecem no terminal**
-do backend, com o link para abrir. Configuração opcional: copie `backend/.env.example` para `backend/.env`.
+Em desenvolvimento o Vite repassa `/api` para o backend (mesma origem, sem CORS). O backend conecta ao MongoDB local em `mongodb://127.0.0.1:27017`, usando o banco `arvore`; você pode configurar `MONGODB_URI` e `MONGODB_DATABASE` em `backend/.env`. Sem SMTP configurado, os links de confirmação e de recuperação **aparecem no terminal** do backend.
 
 ## Deploy na Vercel
 
@@ -138,10 +135,7 @@ dois serviços, cada um compilado separadamente. O `vercel.json` já define tudo
 Não há chamadas internas entre serviços: o navegador chama `/api` pela rota pública, no mesmo domínio.
 Para testar os dois juntos localmente como na Vercel, use `vercel dev`. Para o deploy faltam três coisas:
 
-1. **Banco (Turso)** — em [turso.tech](https://turso.tech), crie uma conta e um banco (escolha a região
-   mais próxima das funções da Vercel, que por padrão rodam em Washington, EUA). Copie a URL do banco
-   (`libsql://…`), gere um token e cadastre na Vercel as variáveis `TURSO_DATABASE_URL` e `TURSO_AUTH_TOKEN`.
-   As tabelas são criadas sozinhas na primeira requisição.
+1. **Banco (MongoDB Atlas)** — em [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas/register), crie uma conta e um cluster. Crie um usuário de banco com acesso `readWrite` somente ao banco `arvore` e copie a connection string para a variável `MONGODB_URI` na Vercel. Configure a IP Access List para restringir as conexões. Para Vercel Pro/Enterprise, use Static IPs e autorize somente os IPs indicados; evite `0.0.0.0/0`, que libera conexões de qualquer origem. Opcionalmente, defina `MONGODB_DATABASE=arvore`. As coleções e índices são criados automaticamente.
 2. **E-mail (SMTP)** — crie uma conta num provedor (Brevo, Resend, Amazon SES, Mailgun…), verifique o seu
    domínio nele (registros SPF/DKIM no DNS, para os e-mails não caírem no spam) e cadastre na Vercel:
 
@@ -158,9 +152,7 @@ Confira em `https://SEU-PROJETO.vercel.app/api/health` (deve responder `{"ok":tr
 variável, a API responde "Servidor em manutenção" e o log da função (Vercel → Logs) diz exatamente o que
 falta.
 
-**Prévias**: cada pull request ganha um endereço de prévia. Se as variáveis do Turso valerem também para
-"Preview", as prévias usam o mesmo banco da produção; para isolar, crie um segundo banco no Turso e
-cadastre-o só no ambiente Preview.
+**Prévias**: cada pull request ganha um endereço de prévia. Configure `MONGODB_URI` também no ambiente Preview; para isolar os dados, use outro banco Atlas.
 
 ## Segurança
 
@@ -182,7 +174,7 @@ cadastre-o só no ambiente Preview.
 - **Cabeçalhos**: CSP só com recursos do próprio site (inclusive as fontes, sem Google Fonts), anti-iframe,
   `nosniff`, HSTS e `no-store` nas respostas da API — na API pelo Express e nas páginas pelo serviço `frontend` do `vercel.json`
   (um teste garante que os dois são iguais).
-- **Entradas**: corpo limitado a 10 KB, SQL sempre parametrizado, nomes sem caracteres invisíveis e só com
+- **Entradas**: corpo limitado a 10 KB, filtros MongoDB construídos como objetos, nomes sem caracteres invisíveis e só com
   alfabeto latino (contra imitações), nomes de guardião únicos sem diferenciar maiúsculas.
 - **Dependências**: `.npmrc` com `ignore-scripts=true` nos dois projetos (nenhum pacote roda código na instalação).
-- **Repositório**: `.env`, bancos SQLite, `node_modules` e o build ficam fora do Git (`.gitignore`).
+- **Repositório**: `.env`, `node_modules` e o build ficam fora do Git (`.gitignore`).
